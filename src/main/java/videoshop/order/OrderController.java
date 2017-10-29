@@ -17,11 +17,13 @@ package videoshop.order;
 
 import videoshop.catalog.Disc;
 
+import java.util.Iterator;
 import java.util.Optional;
 
 import org.salespointframework.catalog.Product;
 import org.salespointframework.core.AbstractEntity;
 import org.salespointframework.order.Cart;
+import org.salespointframework.order.CartItem;
 import org.salespointframework.order.Order;
 import org.salespointframework.order.OrderManager;
 import org.salespointframework.order.OrderStatus;
@@ -40,8 +42,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.SessionAttributes;
 
 /**
- * A Spring MVC controller to manage the {@link Cart}. {@link Cart} instances are held in the session as they're
- * specific to a certain user. That's also why the entire controller is secured by a {@code PreAuthorize} clause.
+ * A Spring MVC controller to manage the {@link Cart}. {@link Cart} instances
+ * are held in the session as they're specific to a certain user. That's also
+ * why the entire controller is secured by a {@code PreAuthorize} clause.
  *
  * @author Paul Henke
  * @author Oliver Gierke
@@ -56,7 +59,8 @@ class OrderController {
 	/**
 	 * Creates a new {@link OrderController} with the given {@link OrderManager}.
 	 * 
-	 * @param orderManager must not be {@literal null}.
+	 * @param orderManager
+	 *            must not be {@literal null}.
 	 */
 	OrderController(OrderManager<Order> orderManager) {
 
@@ -65,8 +69,8 @@ class OrderController {
 	}
 
 	/**
-	 * Creates a new {@link Cart} instance to be stored in the session (see the class-level {@link SessionAttributes}
-	 * annotation).
+	 * Creates a new {@link Cart} instance to be stored in the session (see the
+	 * class-level {@link SessionAttributes} annotation).
 	 * 
 	 * @return a new {@link Cart} instance.
 	 */
@@ -76,10 +80,13 @@ class OrderController {
 	}
 
 	/**
-	 * Adds a {@link Disc} to the {@link Cart}. Note how the type of the parameter taking the request parameter
-	 * {@code pid} is {@link Disc}. For all domain types extening {@link AbstractEntity} (directly or indirectly) a tiny
-	 * Salespoint extension will directly load the object instance from the database. If the identifier provided is
-	 * invalid (invalid format or no {@link Product} with the id found), {@literal null} will be handed into the method.
+	 * Adds a {@link Disc} to the {@link Cart}. Note how the type of the parameter
+	 * taking the request parameter {@code pid} is {@link Disc}. For all domain
+	 * types extening {@link AbstractEntity} (directly or indirectly) a tiny
+	 * Salespoint extension will directly load the object instance from the
+	 * database. If the identifier provided is invalid (invalid format or no
+	 * {@link Product} with the id found), {@literal null} will be handed into the
+	 * method.
 	 * 
 	 * @param disc
 	 * @param number
@@ -89,9 +96,12 @@ class OrderController {
 	 */
 	@PostMapping("/cart")
 	String addDisc(@RequestParam("pid") Disc disc, @RequestParam("number") int number, @ModelAttribute Cart cart) {
-
+		
+		ensureShippingCostsAreInCart(cart);
+		
 		// (｡◕‿◕｡)
-		// Das Inputfeld im View ist eigentlich begrenzt, allerdings sollte man immer auch serverseitig validieren
+		// Das Inputfeld im View ist eigentlich begrenzt, allerdings sollte man immer
+		// auch serverseitig validieren
 		int amount = number <= 0 || number > 5 ? 1 : number;
 
 		// (｡◕‿◕｡)
@@ -99,14 +109,15 @@ class OrderController {
 		cart.addOrUpdateItem(disc, Quantity.of(amount));
 
 		// (｡◕‿◕｡)
-		// Je nachdem ob disc eine DVD oder eine Bluray ist, leiten wir auf die richtige Seite weiter
+		// Je nachdem ob disc eine DVD oder eine Bluray ist, leiten wir auf die richtige
+		// Seite weiter
 
 		switch (disc.getType()) {
-			case DVD:
-				return "redirect:dvds";
-			case BLURAY:
-			default:
-				return "redirect:blurays";
+		case DVD:
+			return "redirect:dvds";
+		case BLURAY:
+		default:
+			return "redirect:blurays";
 		}
 	}
 
@@ -116,11 +127,14 @@ class OrderController {
 	}
 
 	/**
-	 * Checks out the current state of the {@link Cart}. Using a method parameter of type {@code Optional<UserAccount>}
-	 * annotated with {@link LoggedIn} you can access the {@link UserAccount} of the currently logged in user.
+	 * Checks out the current state of the {@link Cart}. Using a method parameter of
+	 * type {@code Optional<UserAccount>} annotated with {@link LoggedIn} you can
+	 * access the {@link UserAccount} of the currently logged in user.
 	 * 
-	 * @param cart will never be {@literal null}.
-	 * @param userAccount will never be {@literal null}.
+	 * @param cart
+	 *            will never be {@literal null}.
+	 * @param userAccount
+	 *            will never be {@literal null}.
 	 * @return
 	 */
 	@PostMapping("/checkout")
@@ -129,7 +143,8 @@ class OrderController {
 		return userAccount.map(account -> {
 
 			// (｡◕‿◕｡)
-			// Mit completeOrder(…) wird der Warenkorb in die Order überführt, diese wird dann bezahlt und abgeschlossen.
+			// Mit completeOrder(…) wird der Warenkorb in die Order überführt, diese wird
+			// dann bezahlt und abgeschlossen.
 			// Orders können nur abgeschlossen werden, wenn diese vorher bezahlt wurden.
 			Order order = new Order(account, Cash.CASH);
 
@@ -151,5 +166,16 @@ class OrderController {
 		model.addAttribute("ordersCompleted", orderManager.findBy(OrderStatus.COMPLETED));
 
 		return "orders";
+	}
+
+	private void ensureShippingCostsAreInCart(Cart cart) {
+		Iterator<CartItem> it = cart.iterator();
+		while (it.hasNext()) {
+			CartItem item = it.next();
+			if (item.getProduct() instanceof ShippingCosts) {
+				return;
+			}
+		}
+		cart.addOrUpdateItem(new ShippingCosts(), Quantity.of(1));
 	}
 }
